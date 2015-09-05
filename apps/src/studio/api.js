@@ -191,6 +191,14 @@ exports.onEvent = function (id, eventName, func) {
   });
 };
 
+exports.ask = function (id, message, variable) {
+  // TODO(bpm): Does this also belong in apiJavascript.js?
+  Studio.queueCmd(id, 'ask', {
+    'message': message,
+    'variable': variable
+  });
+};
+
 /**
  * @param {number} keyCode
  * @returns {boolean} True if key is currently down

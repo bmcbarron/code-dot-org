@@ -180,6 +180,7 @@
               </block>
             </value>
           </block>
+          <block type="studio_ask"/>
           <block type="studio_playSound">
             <title name="SOUND">hit</title>
           </block>
@@ -249,6 +250,7 @@
           <block type="studio_whenSpriteClicked">
             <title name="SPRITE">0</title>
           </block>
+          <block type="studio_afterAsk"/>
         </category>
         <category name="Loops">
           <block type="studio_repeatForever"/>

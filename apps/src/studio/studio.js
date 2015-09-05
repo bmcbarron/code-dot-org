@@ -708,7 +708,8 @@ function callHandler (name, allowQueueExtension, extraArgs) {
       // Note: we skip executing the code if we have not completed executing
       // the cmdQueue on this handler (checking for non-zero length)
       if (handler.name === name &&
-          (allowQueueExtension || (0 === handler.cmdQueue.length))) {
+          (allowQueueExtension || (0 === handler.cmdQueue.length)) &&
+          (!Studio.modalQueue || Studio.modalQueue === handler.cmdQueue)) {
         Studio.currentCmdQueue = handler.cmdQueue;
         try {
           handler.func(studioApp, api, Studio.Globals);
@@ -873,9 +874,8 @@ Studio.onTick = function() {
     callHandler('repeatForever');
     Studio.executeQueue('repeatForever');
 
-    for (i = 0; i < Studio.spriteCount; i++) {
-      Studio.executeQueue('whenSpriteClicked-' + i);
-    }
+    Studio.executeQueue('whenSpriteClicked-', false, true);
+    Studio.executeQueue('afterAsk-', false, true);
 
     // Run key event handlers for any keys that are down:
     for (var key in KeyCodes) {
@@ -955,6 +955,10 @@ Studio.onTick = function() {
   var spritesNeedMoreAnimationFrames = false;
 
   for (i = 0; i < Studio.spriteCount; i++) {
+    if (Studio.modalQueue) {
+      continue;
+    }
+
     if (!animationOnlyFrame) {
       performQueuedMoves(i);
     }
@@ -1889,6 +1893,13 @@ Studio.reset = function(first) {
   Studio.message = null;
   Studio.pauseInterpreter = false;
 
+  // Clear ask dialog and modal queue.
+  if (Studio.askDialog) {
+    Studio.askDialog.remove();
+    Studio.askDialog = null;
+  }
+  Studio.modalQueue = null;
+
   // Reset the score and title screen.
   Studio.playerScore = 0;
   Studio.scoreText = null;
@@ -2479,6 +2490,11 @@ Studio.execute = function() {
                                      'whenSpriteCollided',
                                      'SPRITE1',
                                      'SPRITE2');
+    registerHandlersWithTitleParam(handlers,
+                                   'studio_afterAsk',
+                                   'afterAsk',
+                                   'VAR',
+                                   Blockly.Variables.allVariables());
   }
 
   studioApp.playAudio('start');
@@ -3225,14 +3241,20 @@ Studio.queueCmd = function (id, name, opts) {
 // If Studio.yieldThisTick is true, execution of commands will stop
 //
 
-Studio.executeQueue = function (name, oneOnly) {
+Studio.executeQueue = function (name, oneOnly, matchPrefix) {
   Studio.eventHandlers.forEach(function (handler) {
     if (Studio.yieldThisTick) {
       return;
     }
-    if (handler.name === name && handler.cmdQueue.length) {
+    if ((matchPrefix && handler.name.indexOf(name) === 0 ||
+         !matchPrefix && handler.name === name) &&
+        handler.cmdQueue.length &&
+        (!Studio.modalQueue || Studio.modalQueue === handler.cmdQueue)) {
       for (var cmd = handler.cmdQueue[0]; cmd; cmd = handler.cmdQueue[0]) {
-        if (Studio.callCmd(cmd)) {
+        Studio.currentCmdQueue = handler.cmdQueue;
+        var isComplete = Studio.callCmd(cmd);
+        Studio.currentCmdQueue = null;
+        if (isComplete) {
           // Command executed immediately, remove from queue and continue
           handler.cmdQueue.shift();
         } else {
@@ -3411,6 +3433,11 @@ Studio.callCmd = function (cmd) {
       studioApp.highlight(cmd.id);
       Studio.onEvent(cmd.opts);
       break;
+    case 'ask':
+      if (!cmd.opts.started) {
+        studioApp.highlight(cmd.id);
+      }
+      return Studio.ask(cmd.id, cmd.opts);
   }
   return true;
 };
@@ -4759,6 +4786,75 @@ Studio.moveDistance = function (opts) {
 
 Studio.onEvent = function (opts) {
   registerEventHandler(Studio.eventHandlers, opts.eventName, opts.func);
+};
+
+Studio.ask = function (id, opts) {
+  if (!opts.started) {
+    opts.started = true;
+
+    var askDiv = $('<div id="ask-dialog"/>');
+    askDiv.css('transform', 'scale(1)');
+    askDiv.html(require('../templates/ask.html.ejs')({
+      prompt: opts.message
+    }));
+
+    var input = askDiv.find('#ask-input');
+    var submit = function() {
+      setVariable(opts.variable, input.val());
+      askDiv.remove();
+      Studio.askDialog = null;
+      if (false) {
+        // If we deferred statements after the studio_ask block, we can
+        // queue them up now. Unfortunately, this interacts poorly with some
+        // loops and function calls, and so is currently disabled.
+        continueBlock(id, Studio.modalQueue);
+      }
+      Studio.modalQueue = null;
+      callHandler('afterAsk-' + opts.variable);
+      opts.complete = true;
+    };
+    input.keypress(function(e) {
+      if (e.which == 13) { submit(); }
+    });
+
+    var confirmButton = askDiv.find('#confirm-button');
+    confirmButton.click(submit);
+    
+    var vis = document.querySelector("#visualization");
+    askDiv.appendTo($('#visualization'));
+    Studio.askDialog = askDiv;
+    Studio.modalQueue = Studio.currentCmdQueue;
+    input.focus();
+  }
+  return opts.complete;
+};
+
+var setVariable = function (name, value) {
+  var varName = Blockly.JavaScript.translateVarName(name);
+  if (varName.indexOf('Globals.') === 0) {
+    varName = varName.substr(8);
+  }
+  Studio.Globals[varName] = value;
+};
+
+var continueBlock = function (id, queue) {
+  var m = id.match(/^block_id_(\d+)$/);
+  if (m) {
+    id = m[1];
+  }
+  var idBlock = Blockly.mainBlockSpace.getBlockById(id);
+  var nextBlock = idBlock.nextConnection && idBlock.nextConnection.targetBlock();
+  if (nextBlock) {
+    var code = Blockly.Generator.blocksToCode('JavaScript', [ nextBlock ]);
+    if (code) {
+      var activeQueue = Studio.currentCmdQueue;
+      Studio.currentCmdQueue = queue;
+      codegen.evalWith(code, { StudioApp: studioApp,
+                               Studio: api,
+                               Globals: Studio.Globals } );
+      Studio.currentCmdQueue = activeQueue;
+    }
+  }
 };
 
 /**

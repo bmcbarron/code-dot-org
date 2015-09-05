@@ -989,9 +989,10 @@ StudioApp.prototype.onMouseDownVizResizeBar = function (event) {
 
 function applyTransformScaleToChildren(element, scale) {
   for (var i = 0; i < element.children.length; i++) {
-    element.children[i].style.transform = scale;
-    element.children[i].style.msTransform = scale;
-    element.children[i].style.webkitTransform = scale;
+    var childScale = ($(element.children[i]).css('position') === 'absolute') ? 'scale(1)' : scale;
+    element.children[i].style.transform = childScale;
+    element.children[i].style.msTransform = childScale;
+    element.children[i].style.webkitTransform = childScale;
   }
 }
 

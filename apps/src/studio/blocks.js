@@ -2153,6 +2153,115 @@ exports.install = function(blockly, blockInstallOptions) {
     var keyCode = Blockly.JavaScript.statementToCode(this, 'ARG1', false) || - 1;
     return 'Studio.isKeyDown(' + keyCode + ');';
   };
+
+  /**
+   * studio_ask pauses execution and prompts the user with the question given in TEXT.
+   * The answer is written to the variable named in VAR.
+   */
+  blockly.Blocks.studio_ask = {
+    helpUrl: '',
+    init: function() {
+      this.setHSV(184, 1.00, 0.74);
+      this.appendDummyInput()
+          .appendTitle(msg.ask())
+          .appendTitle(new Blockly.FieldImage(
+              Blockly.assetUrl('media/quote0.png'), 12, 12))
+          .appendTitle(new Blockly.FieldTextInput(''), 'TEXT')
+          .appendTitle(new Blockly.FieldImage(
+              Blockly.assetUrl('media/quote1.png'), 12, 12))
+	  .appendTitle(msg.toSet())
+	  .appendTitle(new Blockly.FieldVariable(Blockly.Msg.VARIABLES_DEFAULT_NAME), 'VAR');
+      this.setPreviousStatement(true);
+      this.setNextStatement(true);
+      this.setTooltip(msg.askTooltip());
+    },
+    getVars: function() {
+      return [this.getTitleValue('VAR')];
+    },
+    renameVar: function(oldName, newName) {
+      if (Blockly.Names.equals(oldName, this.getTitleValue('VAR'))) {
+        this.setTitleValue(newName, 'VAR');
+      }
+    },
+    removeVar: function(oldName) {
+      if (Blockly.Names.equals(oldName, this.getTitleValue('VAR'))) {
+        this.setTitleValue(Blockly.Msg.VARIABLES_DEFAULT_NAME, 'VAR');
+      }
+    }
+  };
+
+  generator.studio_ask = function() {
+    var msg = Blockly.JavaScript.quote_(this.getTitleValue('TEXT'));
+    var variable = Blockly.JavaScript.quote_(this.getTitleValue('VAR'));
+    var code = 'Studio.ask(\'block_id_' + this.id + '\', ' + msg + ', ' + variable + ');\n';
+    if (false && this.nextConnection) {
+      // When this code is run, the statements following studio_ask are not generated.
+      // This allows us to defer execution until after Studio.ask has executed.
+      // Unfortunately, this interacts poorly with some loops and function calls, and
+      // so is currently disabled.
+      var block = new Blockly.Block(this.blockSpace, 'studio_internal_defer');
+      block.initSvg();
+      block.render();
+      block.previousConnection.connect(this.nextConnection);
+    }
+    return code;
+  };
+
+  /**
+   * studio_afterAsk is an event that executes after a studio_ask block has finished
+   * and set the variable named in VAR.
+   */
+  blockly.Blocks.studio_afterAsk = {
+    helpUrl: '',
+    init: function() {
+      this.setHSV(140, 1.00, 0.74);
+      this.appendDummyInput()
+          .appendTitle(commonMsg.when())
+	  .appendTitle(new Blockly.FieldVariable(Blockly.Msg.VARIABLES_DEFAULT_NAME), 'VAR')
+          .appendTitle(msg.changesAfterAsk());
+      this.setPreviousStatement(false);
+      this.setInputsInline(true);
+      this.setNextStatement(true);
+      this.setTooltip(msg.afterAskTooltip());
+    },
+    getVars: function() {
+      return [this.getTitleValue('VAR')];
+    },
+    renameVar: function(oldName, newName) {
+      if (Blockly.Names.equals(oldName, this.getTitleValue('VAR'))) {
+        this.setTitleValue(newName, 'VAR');
+      }
+    },
+    removeVar: function(oldName) {
+      if (Blockly.Names.equals(oldName, this.getTitleValue('VAR'))) {
+        this.setTitleValue(Blockly.Msg.VARIABLES_DEFAULT_NAME, 'VAR');
+      }
+    }
+  };
+
+  generator.studio_afterAsk = generator.studio_eventHandlerPrologue;
+
+  /**
+   * studio_internal_defer should never be used directly. By injecting between two blocks during code generation,
+   * it interrupts code generation at that point, and then deletes itself. This can be used to defer
+   * further code generation until after some asynchronous event.
+   * See studio_ask for an example.
+   */
+  blockly.Blocks.studio_internal_defer = {
+    helpUrl: '',
+    init: function() {
+      this.setHSV(0, 0, 0);
+      this.appendDummyInput()
+	  .appendTitle("You should never see this");
+      this.setPreviousStatement(true);
+      this.setNextStatement(true);
+    }
+  };
+
+  generator.studio_internal_defer = function() {
+    this.dispose(true, false);
+    return null;
+  };
 };
 
 function installVanish(blockly, generator, spriteNumberTextDropdown, startingSpriteImageDropdown, blockInstallOptions) {
